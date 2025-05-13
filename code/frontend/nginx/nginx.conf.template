@@ -13,7 +13,7 @@ http {
 
     server {
         listen 80;
-        server_name santosh.website;
+        server_name *.santosh.website;
 
         root /usr/share/nginx/html/myapp;
         index index.html;

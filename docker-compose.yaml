@@ -1,0 +1,15 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    environment:
+      - BACKEND_URL= http://backend:5000 
+    networks:
+      - network
+
+networks:
+  network:
+    driver: bridge
