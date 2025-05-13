@@ -1,6 +1,6 @@
 server {
     listen 80;
-    server_name myapp.example.com;
+    server_name santosh.website;
     
     root /usr/share/nginx/html/myapp;
     index index.html;
