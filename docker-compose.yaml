@@ -31,12 +31,10 @@ services:
       REDIS_NODES: redis
       REDIS_PASSWORD: santosh
       REDIS_TLS: false
-      
     networks:
       - network
     depends_on:
       - db
-      - redis
     
 
   db:
@@ -53,16 +51,6 @@ services:
       - db_data:/var/lib/mysql
     networks:
       - network
-
-  redis:
-    image: redis:6.2-alpine
-    container_name: redis
-    ports:
-      - "6379:6379"
-    command: redis-server --requirepass santosh
-    networks:
-      - network
-
 
 networks:
   network:
