@@ -1,0 +1,24 @@
+# Environment Variables
+
+## Frontend Environment Variables
+For the React frontend:
+- Create an `.env` file in the client directory with the following content:
+  ```
+  REACT_APP_API_URL=http://localhost:5000/api
+  ```
+- In production, you might use:
+  ```
+  REACT_APP_API_URL=https://api.yourproductionsite.com/api
+  ```
+- These are also set in the docker-compose.yml file and in the Dockerfile as defaults
+
+## Backend Environment Variables
+For the Node.js backend:
+- These are set in docker-compose.yml:
+  ```
+  DB_HOST: db
+  DB_USER: appuser
+  DB_PASSWORD: apppassword
+  DB_NAME: appdb
+  SERVER_PORT: 5000
+  ```
