@@ -52,6 +52,7 @@ services:
     networks:
       - network
 
+
 networks:
   network:
     driver: bridge
