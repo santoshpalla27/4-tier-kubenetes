@@ -5,10 +5,8 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const mysql = require('mysql2/promise');
-const Redis = require('ioredis');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const { promisify } = require('util');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -114,41 +112,10 @@ const dbPool = mysql.createPool({
   }
 });
 
-
-// Redis connection (cluster mode)
-let redisClient;
-try {
-  const redisNodes = process.env.REDIS_NODES.split(',').map(node => {
-    const [host, port] = node.split(':');
-    return { host, port: parseInt(port) };
-  });
-  
-  redisClient = new Redis.Cluster(redisNodes, {
-    redisOptions: {
-      password: process.env.REDIS_PASSWORD || '',
-      connectTimeout: 10000,
-      tls: process.env.REDIS_TLS === 'true' ? {} : undefined
-    },
-    // Customize cluster behavior
-    clusterRetryStrategy: times => Math.min(times * 50, 2000),
-    scaleReads: 'all' // Read from all replicas for load balancing
-  });
-  
-  redisClient.on('error', (err) => {
-    console.error('Redis cluster error:', err);
-  });
-
-  redisClient.on('connect', () => {
-    console.log('Successfully connected to Redis cluster');
-  });
-} catch (error) {
-  console.error('Redis cluster connection error:', error);
-}
-
 // Root route
 app.get('/', (req, res) => {
   res.json({
-    message: 'Welcome to the 4-tier application API',
+    message: 'Welcome to the 3-tier application API',
     version: process.env.APP_VERSION || '1.0.0',
     endpoints: {
       health: '/api/health',
@@ -162,9 +129,7 @@ app.get('/', (req, res) => {
 // Enhanced health check endpoint with detailed diagnostics
 app.get('/api/health', async (req, res) => {
   let dbStatus = false;
-  let cacheStatus = false;
   let dbError = null;
-  let cacheError = null;
   
   // Check database connection
   try {
@@ -185,21 +150,6 @@ app.get('/api/health', async (req, res) => {
     console.error('Database health check failed:', error);
   }
   
-  // Check Redis connection
-  try {
-    console.log('Attempting Redis connection...');
-    if (redisClient && redisClient.status === 'ready') {
-      await redisClient.ping();
-      cacheStatus = true;
-      console.log('Redis connection successful');
-    } else {
-      console.log('Redis client not ready:', redisClient ? redisClient.status : 'null');
-    }
-  } catch (error) {
-    cacheError = error.message;
-    console.error('Redis health check failed:', error);
-  }
-  
   // Get memory usage
   const memoryUsage = process.memoryUsage();
   
@@ -217,14 +167,6 @@ app.get('/api/health', async (req, res) => {
         port: process.env.DB_PORT
       }
     },
-    cache: {
-      connected: cacheStatus,
-      error: cacheError,
-      config: {
-        host: process.env.REDIS_HOST,
-        port: process.env.REDIS_PORT
-      }
-    },
     environment: process.env.ENVIRONMENT || 'development',
     version: process.env.APP_VERSION || '1.0.0',
     node_version: process.version,
@@ -239,24 +181,10 @@ app.get('/api/health', async (req, res) => {
 // Get all items
 app.get('/api/items', async (req, res) => {
   try {
-    // Try to get from cache first
-    if (redisClient && redisClient.status === 'ready') {
-      const cachedItems = await redisClient.get('items');
-      if (cachedItems) {
-        console.log('Returning items from cache');
-        return res.json(JSON.parse(cachedItems));
-      }
-    }
-    
-    // If not in cache, get from database
+    // Get from database
     const [rows] = await dbPool.query(
       'SELECT * FROM items ORDER BY created_at DESC LIMIT 100'  // Added limit for safety
     );
-    
-    // Store in cache for future requests
-    if (redisClient && redisClient.status === 'ready') {
-      await redisClient.set('items', JSON.stringify(rows), 'EX', 60); // Expire after 60 seconds
-    }
     
     res.json(rows);
   } catch (error) {
@@ -278,16 +206,7 @@ app.get('/api/items/:id', async (req, res) => {
       return res.status(400).json({ error: 'Invalid item ID' });
     }
     
-    // Try to get from cache first
-    if (redisClient && redisClient.status === 'ready') {
-      const cachedItem = await redisClient.get(`item:${id}`);
-      if (cachedItem) {
-        console.log(`Returning item ${id} from cache`);
-        return res.json(JSON.parse(cachedItem));
-      }
-    }
-    
-    // If not in cache, get from database using parameterized query for security
+    // Get from database using parameterized query for security
     const [rows] = await dbPool.query(
       'SELECT * FROM items WHERE id = ?',
       [id]
@@ -295,11 +214,6 @@ app.get('/api/items/:id', async (req, res) => {
     
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Item not found' });
-    }
-    
-    // Store in cache for future requests
-    if (redisClient && redisClient.status === 'ready') {
-      await redisClient.set(`item:${id}`, JSON.stringify(rows[0]), 'EX', 300); // Expire after 5 minutes
     }
     
     res.json(rows[0]);
@@ -330,11 +244,6 @@ app.post('/api/items', async (req, res) => {
       'INSERT INTO items (name, description) VALUES (?, ?)',
       [name, description]
     );
-    
-    // Invalidate cache
-    if (redisClient && redisClient.status === 'ready') {
-      await redisClient.del('items');
-    }
     
     res.status(201).json({
       id: result.insertId,
@@ -389,12 +298,6 @@ app.put('/api/items/:id', async (req, res) => {
       [updatedName, updatedDescription, id]
     );
     
-    // Invalidate cache
-    if (redisClient && redisClient.status === 'ready') {
-      await redisClient.del(`item:${id}`);
-      await redisClient.del('items');
-    }
-    
     res.json({
       id: parseInt(id),
       name: updatedName,
@@ -427,12 +330,6 @@ app.delete('/api/items/:id', async (req, res) => {
     
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Item not found' });
-    }
-    
-    // Invalidate cache
-    if (redisClient && redisClient.status === 'ready') {
-      await redisClient.del(`item:${id}`);
-      await redisClient.del('items');
     }
     
     res.status(204).end();
@@ -475,7 +372,6 @@ async function startServer() {
       console.log(`Environment: ${process.env.ENVIRONMENT || 'development'}`);
       console.log(`Node.js version: ${process.version}`);
       console.log(`Database host: ${process.env.DB_HOST}`);
-      console.log(`Redis host: ${process.env.REDIS_HOST}`);
     });
     
     // Set timeouts
@@ -504,16 +400,6 @@ process.on('SIGTERM', async () => {
     console.log('Database connections closed');
   } catch (error) {
     console.error('Error closing database connections:', error);
-  }
-  
-  // Close Redis connection
-  if (redisClient) {
-    try {
-      await redisClient.quit();
-      console.log('Redis connection closed');
-    } catch (error) {
-      console.error('Error closing Redis connection:', error);
-    }
   }
   
   // Exit with success code

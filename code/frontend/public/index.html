@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>4-Tier Application Demo</title>
+    <title>3-Tier Application Demo</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
-        <h1>4-Tier Application Demo</h1>
+        <h1>3-Tier Application Demo</h1>
         <div class="info-box">
             <p>Environment: <span id="environment"></span></p>
             <p>Version: <span id="version"></span></p>
@@ -50,10 +50,6 @@
                     <h3>Database</h3>
                     <div id="dbStatus" class="status-indicator checking"></div>
                 </div>
-                <div class="status-item">
-                    <h3>Cache</h3>
-                    <div id="cacheStatus" class="status-indicator checking"></div>
-                </div>
             </div>
         </div>
     </div>
@@ -94,14 +90,11 @@
                 })
                 .then(data => {
                     document.getElementById('dbStatus').className = 
-                        data.database ? 'status-indicator online' : 'status-indicator offline';
-                    document.getElementById('cacheStatus').className = 
-                        data.cache ? 'status-indicator online' : 'status-indicator offline';
+                        data.database.connected ? 'status-indicator online' : 'status-indicator offline';
                 })
                 .catch(() => {
                     document.getElementById('backendStatus').className = 'status-indicator offline';
                     document.getElementById('dbStatus').className = 'status-indicator unknown';
-                    document.getElementById('cacheStatus').className = 'status-indicator unknown';
                 });
         }
 
